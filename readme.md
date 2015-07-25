@@ -69,7 +69,7 @@ udpTracker.on('update', function (msg) {
      port: (16 bytes),
      _timeout: timeout for announce try in miliseconds
    }
- ```
+   ```
 
 2. ####udpTracker.announce(event, opts)
 
@@ -101,8 +101,8 @@ following things need to implement.
   - [ ] implement scraping
   - [ ] support IP6
   - [ ] implement extensions
-    * [ ] authentication
-    * [ ] request string
+  - [ ] authentication
+  - [ ] request string
 
 ###Implementation Details
 
