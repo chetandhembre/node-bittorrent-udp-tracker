@@ -295,7 +295,7 @@ function _request (event, opts) {
   }
 
   function _write (data, offset) {
-
+    parsedAnnounceUrl.port = parsedAnnounceUrl.port || 80
     socket.send(data, offset, data.length, parsedAnnounceUrl.port, parsedAnnounceUrl.hostname)
   }
 
