@@ -11,7 +11,6 @@ var fromUInt32Sync = require('from-unsigned-int32').fromUInt32Sync
 var compact2string = require('compact2string')
 var inherits = require('inherits')
 var bufferEqual = require('buffer-equal')
-var tt = 0
 inherits(UDPTracker, EventEmitter)
 
 var eventMap = {
@@ -69,7 +68,7 @@ opts must
 */
 UDPTracker.prototype.announce = function (event, opts) {
   var self = this
-  self._last_opts = opts
+  self._last_opts = opts || {}
   self._last_opts['event'] = event
   if (!self._in_interval) {
     _request.bind(self, self._last_opts['event'], self._last_opts)()
@@ -203,7 +202,7 @@ function _request (event, opts) {
 
   function handleAnnounceResponse (msg) {
 
-    if (msg.length <= 20) {
+    if (msg.length < 20) {
       return self.emit('error', 'announce response should be 20 bytes')
     }
 
@@ -215,10 +214,10 @@ function _request (event, opts) {
     // interval is in seconds
     var interval = fromUInt32Sync(msg, 8)
     self._in_interval = true
-    var intervalTimout = setTimeout(function (tt) {
+    var intervalTimout = setTimeout(function () {
       self._in_interval = false
       return self.announce(self._last_opts['event'], self._last_opts)
-    }, interval * 1000, tt)
+    }, interval * 1000)
 
     if (intervalTimout.unref) {
       intervalTimout.unref()
