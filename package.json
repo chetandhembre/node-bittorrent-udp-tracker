@@ -1,6 +1,6 @@
 {
   "name": "bittorrent-udp-tracker",
-  "version": "1.0.2",
+  "version": "1.2.0",
   "description": "udp tracker for bittorrent",
   "main": "index.js",
   "scripts": {
