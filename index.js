@@ -78,16 +78,50 @@ UDPTracker.prototype.announce = function (event, opts) {
 }
 
 UDPTracker.prototype.destory = function () {
-  this.destoryed = true
-  this._announce_intervals_timeout.forEach(function (timmer) {
+  var self = this
+  self.destoryed = true
+  _destory(self)
+  return
+}
+
+function _cleanSocket (socket) {
+  if (!socket) {
+    return null
+  }
+
+  socket.removeListener('error', console.error)
+  socket.removeListener('message', console.log)
+  socket.on('error', console.error)
+
+  try {
+    socket.close()
+  } catch (e) {}
+
+  return null
+}
+
+function _clearTimmer (udpTimmers) {
+  if (udpTimmers) {
+    for (var i = 0; i < udpTimmers.length; i++) {
+      clearTimeout(udpTimmers[i])
+    }
+  }
+
+  return []
+}
+
+function _destory (self) {
+  self._announce_intervals_timeout.forEach(function (timmer) {
     clearTimeout(timmer)
   })
-  this._announce_intervals_timeout = []
-  return
+  self._announce_intervals_timeout = []
+  self._udpTimmers = _clearTimmer(self._udpTimmers)
+  self._socket = _cleanSocket(self._socket)
 }
 
 function _request (event, opts) {
   var self = this
+
   if (self.destoryed) {
     return
   }
@@ -97,70 +131,52 @@ function _request (event, opts) {
     self.emit('error', 'unknown event')
   }
 
-  var socket = dgram.createSocket('udp4')
-  socket.on('message', onMessage)
-  socket.on('error', console.error)
-  var udpTimmers = []
-  timmer(makeConnectRequest(), 0, 'connect')()
+  _destory(self)
+  self._socket = dgram.createSocket('udp4')
+  self._socket.on('message', onMessage)
+  self._socket.on('error', console.error)
+  self._udpTimmers = []
 
   var connectionId = Buffer.concat([ toUInt32Sync(0x417), toUInt32Sync(0x27101980) ])
   var transactionId = getTransactionId()
 
   var parsedAnnounceUrl = url.parse(self.announceUrl)
 
-  function clearTimmer () {
-    if (udpTimmers) {
-      for (var i = 0; i < udpTimmers.length; i++) {
-        clearTimeout(udpTimmers[i])
-      }
-    }
+  // make connect request
+  makeConnectRequest()
 
-    udpTimmers = []
-  }
+  // schedule next connect request base on timeout specification
+  timmer(makeConnectRequest, 'connect')()
 
-  function cleanSocket () {
-    if (!socket) {
+  function onMessage (msg) {
+    if (self.destoryed) {
       return
     }
 
-    socket.removeListener('error', console.error)
-    socket.removeListener('message', onMessage)
-    socket.on('error', console.error)
-
-    try {
-      socket.close()
-    } catch (e) {}
-    socket = null
-  }
-
-  function onDestory () {
-    clearTimmer()
-    cleanSocket()
-  }
-
-  function onMessage (msg) {
     var action = fromUInt32Sync(msg, 0)
-    clearTimmer()
+    _clearTimmer(self._udpTimmers)
     switch (action) {
       case 0 :
         if (!handleConnectResponce(msg)) {
-          cleanSocket()
+          _destory(self)
           return
         }
-        timmer(makeAnnounceRequest, 0, 'announce')()
+        makeAnnounceRequest()
+        // schedule next announce call
+        timmer(makeAnnounceRequest, 'announce')()
         break
 
       case 1 :
-        cleanSocket()
+        _destory(self)
         handleAnnounceResponse(msg)
         break
 
       case 3 :
-        cleanSocket()
+        _destory(self)
         return onAnnounceError(msg)
 
       default :
-        cleanSocket()
+        _destory(self)
         self.emit('error', 'unsupported event:' + action)
         return
     }
@@ -224,7 +240,6 @@ function _request (event, opts) {
     }
 
     self._announce_intervals_timeout.push(intervalTimout)
-
     self.emit('update', {
       leechers: fromUInt32Sync(msg, 12),
       seeds: fromUInt32Sync(msg, 16),
@@ -233,21 +248,13 @@ function _request (event, opts) {
   }
 
   function makeConnectRequest () {
-    return function () {
-      if (self.destoryed) {
-        return onDestory()
-      }
-      var action = new Buffer(4)
-      action.fill(0)
-      var data = Buffer.concat([connectionId, toUInt32Sync(0), transactionId])
-      _write(data, 0)
-    }
+    var action = new Buffer(4)
+    action.fill(0)
+    var data = Buffer.concat([connectionId, toUInt32Sync(0), transactionId])
+    _write(data, 0)
   }
 
   function makeAnnounceRequest () {
-    if (this.destoryed) {
-      return onDestory()
-    }
     var downloaded = opts['downloaded'] ? toUInt64(opts['downloaded']) : toUInt64(0)
     var left = opts['left'] ? toUInt64(opts['left']) : toUInt64(0)
     var uploaded = opts['uploaded'] ? toUInt64(opts['uploaded']) : toUInt64(0)
@@ -270,13 +277,13 @@ function _request (event, opts) {
     _write(data, 0)
   }
 
-  function timmer (fn, timeout, message) {
-    var n = 0
-    var _timeout = timeout
-    clearTimmer()
+  function timmer (fn, message, timeout) {
+    var n = 1
+    var _timeout = timeout || incrementTimeout(n)
+    _clearTimmer(self._udpTimmers)
     return function _timmer () {
       if (n >= 8) {
-        cleanSocket()
+        _destory(self)
         return self.emit('error', 'tracker is not responding after:' + _timeout)
       }
 
@@ -287,16 +294,21 @@ function _request (event, opts) {
         _timmer()
       }, _timeout)
 
+      self._udpTimmers.push(udpTimmer)
+
       if (udpTimmer.unref) {
         udpTimmer.unref()
       }
-      udpTimmers.push(udpTimmer)
+
     }
   }
 
   function _write (data, offset) {
+    if (self.destoryed) {
+      return
+    }
     parsedAnnounceUrl.port = parsedAnnounceUrl.port || 80
-    socket.send(data, offset, data.length, parsedAnnounceUrl.port, parsedAnnounceUrl.hostname)
+    self._socket.send(data, offset, data.length, parsedAnnounceUrl.port, parsedAnnounceUrl.hostname)
   }
 
   function incrementTimeout (time) {

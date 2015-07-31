@@ -762,10 +762,11 @@ test('should handle destory properly', function (t) {
   })
   var udpTracker = new UdpTracker(new Buffer('01234567890123456789'), new Buffer('12345678901234567890'), announceUrl, {'port': 1234})
   udpTracker.destory()
-  console.log(udpTracker.destoryed)
-  console.log(typeof udpTracker.destoryed)
   t.ok(udpTracker.destoryed)
   t.equal(udpTracker._announce_intervals_timeout.length, 0)
+  t.equal(udpTracker._socket, null)
+  t.equal(udpTracker._udpTimmers.length, 0)
+
   udpServer.destoryServer()
   t.end()
 })
